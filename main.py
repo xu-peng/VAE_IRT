@@ -39,6 +39,9 @@ D = 20
 L = 9
 R = np.array(np.random.rand(N, L) > .5, dtype=np.float32)
 
+P = np.array(np.random.rand(400, 3) > .5)
+Q = np.array(np.random.rand(3, 9) > .5)
+R = np.dot(P, Q).astype(np.float32)
 # train_loader = torch.utils.data.DataLoader(
 #     datasets.MNIST('../data', train=True, download=True,
 #                    transform=transforms.ToTensor()),
@@ -51,12 +54,13 @@ R = np.array(np.random.rand(N, L) > .5, dtype=np.float32)
 
 # model = VAE().to(device)
 model = AutoEncoder(9, 3).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
+# optimizer = optim.Adam(model.parameters(), lr=1e-3)
+optimizer = optim.SGD(model.parameters(), lr=1e-3)
 
 # Reconstruction + KL divergence losses summed over all elements and batch
 def loss_function(recon_x, x):
-    BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
+    # BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
+    MSE = (recon_x - x).pow(2).sum()
 
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -64,7 +68,7 @@ def loss_function(recon_x, x):
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-    return BCE
+    return MSE
 
 
 batch_size = args.batch_size
@@ -119,3 +123,8 @@ for epoch in range(1, args.epochs + 1):
 #         sample = model.decode(sample).cpu()
 #         save_image(sample.view(64, 1, 28, 28),
 #                    'results/sample_' + str(epoch) + '.png')
+
+z = model.encode(torch.tensor(R[0:8,:]).view(8,1,9))
+recon = model.decode(z)
+
+(torch.tensor(R[0:8,:]).view(8,1,9) - recon).pow(2).sum()

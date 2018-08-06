@@ -7,7 +7,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
-
+import ipdb
 
 
 
@@ -47,6 +47,7 @@ class VAE_gumbel(nn.Module):
         y = self.gumbel_softmax_sample(logits, temperature)
         shape = y.size()
         _, ind = y.max(dim=-1)
+        ipdb.set_trace()
         y_hard = torch.zeros_like(y).view(-1, shape[-1])
         y_hard.scatter_(1, ind.view(-1, 1), 1)
         y_hard = y_hard.view(*shape)
@@ -58,6 +59,11 @@ class VAE_gumbel(nn.Module):
         h2 = self.relu(self.fc2(h1))
         return self.relu(self.fc3(h2))
 
+    def gumbel(self, q):
+        q_y = q.view(q.size(0), self.latent_dim, self.categorical_dim)
+        z = self.gumbel_softmax(q_y, self.temp, self.latent_dim, self.categorical_dim)
+        return z
+
     def decode(self, z):
         h4 = self.relu(self.fc4(z))
         h5 = self.relu(self.fc5(h4))
@@ -65,8 +71,7 @@ class VAE_gumbel(nn.Module):
 
     def forward(self, x):
         q = self.encode(x.view(-1, 9))
-        q_y = q.view(q.size(0), self.latent_dim, self.categorical_dim)
-        z = self.gumbel_softmax(q_y, self.temp, self.latent_dim, self.categorical_dim)
+        z = self.gumbel(q)
         return self.decode(z), F.softmax(q)
 
 

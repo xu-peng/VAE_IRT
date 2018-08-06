@@ -7,8 +7,10 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import numpy as np
-from AutoEncoder import AutoEncoder
-import VAE
+# from AutoEncoder import AutoEncoder
+# import VAE
+# import Gumbel_Softmax
+from Gumbel_Softmax import VAE_gumbel
 
 
 parser = argparse.ArgumentParser(description='VAE_IRT')
@@ -40,8 +42,11 @@ L = 9
 R = np.array(np.random.rand(N, L) > .5, dtype=np.float32)
 
 P = np.array(np.random.rand(400, 3) > .5)
-Q = np.array(np.random.rand(3, 9) > .5)
+Q1 = np.array(np.random.rand(3, 6) > .5)
+Q2 = np.array([[True, False, False], [False, True, False], [False, False, True]])
+Q = np.concatenate((Q1, Q2), axis=1)
 R = np.dot(P, Q).astype(np.float32)
+
 # train_loader = torch.utils.data.DataLoader(
 #     datasets.MNIST('../data', train=True, download=True,
 #                    transform=transforms.ToTensor()),
@@ -53,14 +58,15 @@ R = np.dot(P, Q).astype(np.float32)
 
 
 # model = VAE().to(device)
-model = AutoEncoder(9, 3).to(device)
-# optimizer = optim.Adam(model.parameters(), lr=1e-3)
-optimizer = optim.SGD(model.parameters(), lr=1e-3)
+# model = AutoEncoder().to(device)
+model = VAE_gumbel(latent_dim=1, categorical_dim=3, temp=10000).to(device)
+optimizer = optim.Adam(model.parameters(), lr=1e-1)
+# optimizer = optim.SGD(model.parameters(), lr=1e-5)
 
 # Reconstruction + KL divergence losses summed over all elements and batch
-def loss_function(recon_x, x):
-    # BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
-    MSE = (recon_x - x).pow(2).sum()
+# def loss_function(recon_x, x):
+#    BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
+    # MSE = (recon_x - x).pow(2).sum()
 
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -68,25 +74,39 @@ def loss_function(recon_x, x):
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     # KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-    return MSE
+#    return BCE
 
+
+def loss_function(recon_x, x, qy):
+    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 9), size_average=False)
+
+    log_qy = torch.log(qy + 1e-20)
+    g = torch.log(torch.Tensor([1.0 / 3])).cuda()
+    KLD = -torch.sum(qy * (log_qy - g))
+
+    return BCE + KLD
 
 batch_size = args.batch_size
-
+# temp = 1.0
+temp_min = 0.5
+ANNEAL_RATE = 0.03
 
 def train(epoch):
     model.train()
     train_loss = 0
+    temp = 10000.0
     for batch_idx in range(int(len(R)/batch_size)):
         data = torch.tensor(R[batch_idx*batch_size:((batch_idx+1)*batch_size), :])
         data = data.to(device)
-        data = data.view(8, 1, 9)
+        data = data.view(batch_size, 1, 9, 1)
         optimizer.zero_grad()
-        recon_batch = model(data)
-        loss = loss_function(recon_batch, data)
+        recon_batch, qy = model(data)
+        loss = loss_function(recon_batch, data, qy)
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
+        if batch_idx % 10 == 1:
+            temp = np.maximum(temp * np.exp(-ANNEAL_RATE * batch_idx), temp_min)
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
              epoch, (batch_idx+1) * batch_size, len(R),
              100.0 * batch_size * (batch_idx+1) / len(R),
@@ -124,7 +144,10 @@ for epoch in range(1, args.epochs + 1):
 #         save_image(sample.view(64, 1, 28, 28),
 #                    'results/sample_' + str(epoch) + '.png')
 
-z = model.encode(torch.tensor(R[0:8,:]).view(8,1,9))
+q = model.encode(torch.tensor(R[0:batch_size,:]).view(batch_size, 1, 9).to(device))
+z = model.gumbel(q)
 recon = model.decode(z)
 
-(torch.tensor(R[0:8,:]).view(8,1,9) - recon).pow(2).sum()
+(torch.tensor(R[0:batch_size,:]).view(batch_size, 1, 9) - recon).pow(2).sum()
+
+1 - torch.tensor(P[0:batch_size,:].astype(int)).to(device)

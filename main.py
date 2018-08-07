@@ -59,8 +59,8 @@ R = np.dot(P, Q).astype(np.float32)
 
 # model = VAE().to(device)
 # model = AutoEncoder().to(device)
-model = VAE_gumbel(latent_dim=1, categorical_dim=3, temp=10000).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-1)
+model = VAE_gumbel(latent_dim=1, categorical_dim=3).to(device)
+optimizer = optim.Adam(model.parameters(), lr=1e-2)
 # optimizer = optim.SGD(model.parameters(), lr=1e-5)
 
 # Reconstruction + KL divergence losses summed over all elements and batch
@@ -88,19 +88,20 @@ def loss_function(recon_x, x, qy):
 
 batch_size = args.batch_size
 # temp = 1.0
-temp_min = 0.5
+temp_min = 0.1
 ANNEAL_RATE = 0.03
+
 
 def train(epoch):
     model.train()
     train_loss = 0
-    temp = 10000.0
+    temp = 10.0
     for batch_idx in range(int(len(R)/batch_size)):
         data = torch.tensor(R[batch_idx*batch_size:((batch_idx+1)*batch_size), :])
         data = data.to(device)
         data = data.view(batch_size, 1, 9, 1)
         optimizer.zero_grad()
-        recon_batch, qy = model(data)
+        recon_batch, qy = model(data, temp)
         loss = loss_function(recon_batch, data, qy)
         loss.backward()
         train_loss += loss.item()
@@ -145,7 +146,7 @@ for epoch in range(1, args.epochs + 1):
 #                    'results/sample_' + str(epoch) + '.png')
 
 q = model.encode(torch.tensor(R[0:batch_size,:]).view(batch_size, 1, 9).to(device))
-z = model.gumbel(q)
+z = model.gumbel(q, 0.1)
 recon = model.decode(z)
 
 (torch.tensor(R[0:batch_size,:]).view(batch_size, 1, 9) - recon).pow(2).sum()

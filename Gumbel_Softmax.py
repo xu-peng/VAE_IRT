@@ -10,10 +10,9 @@ from torch.nn import functional as F
 import ipdb
 
 
-
 class VAE_gumbel(nn.Module):
 
-    def __init__(self, latent_dim, categorical_dim, temp):
+    def __init__(self, latent_dim, categorical_dim):
         super(VAE_gumbel, self).__init__()
 
         self.fc1 = nn.Linear(9, 512)
@@ -26,7 +25,6 @@ class VAE_gumbel(nn.Module):
 
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
-        self.temp = temp
         self.latent_dim = latent_dim
         self.categorical_dim = categorical_dim
 
@@ -47,7 +45,7 @@ class VAE_gumbel(nn.Module):
         y = self.gumbel_softmax_sample(logits, temperature)
         shape = y.size()
         _, ind = y.max(dim=-1)
-        ipdb.set_trace()
+#        ipdb.set_trace()
         y_hard = torch.zeros_like(y).view(-1, shape[-1])
         y_hard.scatter_(1, ind.view(-1, 1), 1)
         y_hard = y_hard.view(*shape)
@@ -59,9 +57,9 @@ class VAE_gumbel(nn.Module):
         h2 = self.relu(self.fc2(h1))
         return self.relu(self.fc3(h2))
 
-    def gumbel(self, q):
+    def gumbel(self, q, temp):
         q_y = q.view(q.size(0), self.latent_dim, self.categorical_dim)
-        z = self.gumbel_softmax(q_y, self.temp, self.latent_dim, self.categorical_dim)
+        z = self.gumbel_softmax(q_y, temp, self.latent_dim, self.categorical_dim)
         return z
 
     def decode(self, z):
@@ -69,9 +67,9 @@ class VAE_gumbel(nn.Module):
         h5 = self.relu(self.fc5(h4))
         return self.sigmoid(self.fc6(h5))
 
-    def forward(self, x):
+    def forward(self, x, temp):
         q = self.encode(x.view(-1, 9))
-        z = self.gumbel(q)
+        z = self.gumbel(q, temp)
         return self.decode(z), F.softmax(q)
 
 

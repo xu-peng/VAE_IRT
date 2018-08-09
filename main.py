@@ -60,7 +60,7 @@ R = np.dot(P, Q).astype(np.float32)
 # model = VAE().to(device)
 # model = AutoEncoder().to(device)
 model = VAE_gumbel(latent_dim=1, categorical_dim=3).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-2)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
 # optimizer = optim.SGD(model.parameters(), lr=1e-5)
 
 # Reconstruction + KL divergence losses summed over all elements and batch

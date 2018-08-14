@@ -1,0 +1,36 @@
+import numpy as np
+from sklearn.decomposition import NMF
+import nimfa
+
+P = np.array(np.random.rand(400, 3) > .5)
+Q1 = np.array(np.random.rand(3, 6) > .5)
+Q2 = np.array([[True, False, False], [False, True, False], [False, False, True]])
+Q = np.concatenate((Q1, Q2), axis=1)
+R = np.dot(P, Q).astype(np.float32)
+
+# NMF and BMF
+model = NMF(n_components=3, init='random', random_state=0)
+W1 = model.fit_transform(R)
+H1 = model.components_
+bmf = nimfa.Bmf(R, seed="nndsvd", rank=3, max_iter=12, lambda_w=1.1, lambda_h=1.1)
+bmf_fit = bmf()
+
+# Initialization
+lamda = 0.1
+W = np.array(np.random.rand(400, 3))
+H = np.array(np.random.rand(3, 9))
+
+for i in range(0, 100):
+    error = np.power(R - np.dot(W, H), 2).sum()
+    penalty = np.power((np.power(W, 2) - W), 2).sum() + np.power((np.power(H, 2) - H), 2).sum()
+    print("penalty:", penalty)
+    if penalty < 1:
+        break
+    else:
+        loss = error + 0.5 * lamda * penalty
+        print("loss", loss)
+        W = W * (np.dot(R, H.T) / np.dot(W, np.dot(H, H.T)))
+        H = H * (np.dot(W.T, R) / np.dot(np.dot(W.T, W), H))
+
+
+

@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.decomposition import NMF
 import nimfa
 
+np.random.seed(100)
 P = np.array(np.random.rand(400, 3) > .5)
 Q1 = np.array(np.random.rand(3, 6) > .5)
 Q2 = np.array([[True, False, False], [False, True, False], [False, False, True]])
@@ -12,8 +13,10 @@ R = np.dot(P, Q).astype(np.float32)
 model = NMF(n_components=3, init='random', random_state=0)
 W1 = model.fit_transform(R)
 H1 = model.components_
-bmf = nimfa.Bmf(R, seed="nndsvd", rank=3, max_iter=12, lambda_w=1.1, lambda_h=1.1)
+bmf = nimfa.Bmf(R, seed="nndsvd", rank=3, max_iter=30, lambda_w=1.1, lambda_h=1.1)
 bmf_fit = bmf()
+np.all(np.power((bmf_fit.fitted()-R), 2) < 0.1)
+
 
 # Initialization
 lamda = 0.1

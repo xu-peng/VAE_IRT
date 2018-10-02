@@ -119,3 +119,5 @@ for epoch in range(1, args.epochs + 1):
 #         sample = model.decode(sample).cpu()
 #         save_image(sample.view(64, 1, 28, 28),
 #                    'results/sample_' + str(epoch) + '.png')
+
+# (torch.tensor(R_origin).view(400,1,9).byte() == (R2>0.5).byte()).sum()

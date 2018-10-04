@@ -22,6 +22,27 @@ R[rowIndex, colIndex] = 1 - R[rowIndex, colIndex]
 # (R_true == R).sum()  = 3519
 # (R_true[rowIndex, colIndex] != R[rowIndex, colIndex]).sum()=720
 
+
+class autoencoder(nn.Module):
+    def __init__(self):
+        super(autoencoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(9, 400),
+            nn.ReLU(True),
+            nn.Linear(400, 3),
+            nn.ReLU(True))
+        self.decoder = nn.Sequential(
+            nn.Linear(3, 400),
+            nn.ReLU(True),
+            nn.Linear(400, 9),
+            nn.Sigmoid())
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
 class VAE(nn.Module):
     def __init__(self):
         super(VAE, self).__init__()
@@ -106,3 +127,47 @@ for epoch in range(1, 101):
 
 recon, mu, logvar = model(torch.tensor(R).view(400,1,9))
 (np.rint(recon.detach().numpy())==R_true).sum()
+
+
+# Generate ideal response pattern
+import itertools
+lst = list(map(list, itertools.product([0, 1], repeat=3)))
+profile = np.array(lst, dtype=bool)
+R = np.dot(profile, Q).astype(np.float32)
+
+
+model = autoencoder().to(device)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+criterion = nn.BCELoss()
+
+
+def train(epoch):
+    model.train()
+    train_loss = 0
+    for batch_idx in range(int(len(R)/batch_size)):
+        data = torch.tensor(R[batch_idx*batch_size:((batch_idx+1)*batch_size), :])
+        data = data.to(device)
+        data = data.view(8, 1, 9)
+        optimizer.zero_grad()
+        recon_batch = model(data)
+        loss = criterion(recon_batch, data)
+        # recon_batch = model(data)
+        # loss = loss_function(recon_batch, data)
+        loss.backward()
+        train_loss += loss.item()
+        optimizer.step()
+        print('Train Epoch: {} [{}/{} ({:.0f}%)]\t Loss: {:.2f}'.format(
+             epoch, (batch_idx+1) * batch_size, len(R),
+             100.0 * batch_size * (batch_idx+1) / len(R),
+             loss.item() / len(data)))
+
+    print('====> Epoch: {} Average loss: {:.4f}'.format(
+          epoch, train_loss / len(R)))
+
+
+for epoch in range(1, 1001):
+    train(epoch)
+
+recon = model(torch.tensor(R).view(400, 1, 9)).view(400, 9)
+(np.rint(recon.detach().numpy()) == R_true).sum()
+np.clip()

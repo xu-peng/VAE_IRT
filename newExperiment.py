@@ -3,6 +3,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 import numpy as np
 import copy
+from tensorboardX import SummaryWriter
 
 P = np.array(np.random.rand(400, 3) > .5)
 Q1 = np.array(np.random.rand(3, 6) > .5)
@@ -79,34 +80,44 @@ class DCVAE(nn.Module):
     def __init__(self):
         super(DCVAE, self).__init__()
 
+        self.conv_mu = nn.Conv1d(128, 20, 1)
+        self.conv_logvar = nn.Conv1d(128, 20, 1)
+
         self.encoder = nn.Sequential(
             # input is (nc) x 64 x 64
             nn.Conv1d(1, 32, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.LeakyReLU(inplace=True),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
             # state size. (ndf) x 32 x 32
             nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.LeakyReLU(inplace=True),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
             # state size. (ndf*2) x 16 x 16
             nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.LeakyReLU(inplace=True),
-            nn.Sigmoid())
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            nn.Tanh())
 
         self.decoder = nn.Sequential(
+            nn.ConvTranspose1d(20, 128, 1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
             # input is (nc) x 64 x 64
             nn.ConvTranspose1d(128, 64, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.LeakyReLU(inplace=True),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
             # state size. (ndf) x 32 x 32
             nn.ConvTranspose1d(64, 32, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.LeakyReLU(inplace=True),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
             # state size. (ndf*2) x 16 x 16
             nn.ConvTranspose1d(32, 1, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.LeakyReLU(inplace=True),
+            nn.ReLU(inplace=True),
             nn.Sigmoid())
 
-
     def encode(self, x):
-        #h1 = F.relu(self.encoder(x))
-        return self.encoder(x), self.encoder(x)
+        output = self.encoder(x)
+        return [self.conv_mu(output), self.conv_logvar(output)]
 
     def reparameterize(self, mu, logvar):
         if self.training:
@@ -149,6 +160,7 @@ def loss_function(recon_x, x, mu, logvar):
 
 batch_size = 8
 
+writer = SummaryWriter()
 
 def train(epoch):
     model.train()
@@ -167,6 +179,9 @@ def train(epoch):
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
+        writer.add_scalar('train_elbo', -train_loss, global_step=epoch + 1)
+        writer.add_scalar('train_kl', KLD/len(data), global_step=epoch + 1)
+        writer.add_scalar('train_bce', BCE/len(data), global_step=epoch + 1)
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\t BCE: {:.2f}\tKLD: {:.2f}\tLoss: {:.2f}'.format(
              epoch, (batch_idx+1) * batch_size, len(R),
              100.0 * batch_size * (batch_idx+1) / len(R),
@@ -179,9 +194,8 @@ def train(epoch):
 for epoch in range(1, 101):
     train(epoch)
 
-
-
-recon, mu, logvar = model(torch.tensor(R).view(400,1,9))
+recon, mu, logvar = model(torch.tensor(R).view(400, 1, 9))
+recon = recon.view(400, 9)
 (np.rint(recon.detach().numpy())==R_true).sum()
 
 

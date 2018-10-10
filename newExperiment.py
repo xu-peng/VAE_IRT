@@ -74,14 +74,69 @@ class VAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         return self.decode(z), mu, logvar
 
+
+class DCVAE(nn.Module):
+    def __init__(self):
+        super(DCVAE, self).__init__()
+
+        self.encoder = nn.Sequential(
+            # input is (nc) x 64 x 64
+            nn.Conv1d(1, 32, kernel_size=3, stride=1, padding=0, bias=False),
+            nn.LeakyReLU(inplace=True),
+            # state size. (ndf) x 32 x 32
+            nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=0, bias=False),
+            nn.LeakyReLU(inplace=True),
+            # state size. (ndf*2) x 16 x 16
+            nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=0, bias=False),
+            nn.LeakyReLU(inplace=True),
+            nn.Sigmoid())
+
+        self.decoder = nn.Sequential(
+            # input is (nc) x 64 x 64
+            nn.ConvTranspose1d(128, 64, kernel_size=3, stride=1, padding=0, bias=False),
+            nn.LeakyReLU(inplace=True),
+            # state size. (ndf) x 32 x 32
+            nn.ConvTranspose1d(64, 32, kernel_size=3, stride=1, padding=0, bias=False),
+            nn.LeakyReLU(inplace=True),
+            # state size. (ndf*2) x 16 x 16
+            nn.ConvTranspose1d(32, 1, kernel_size=3, stride=1, padding=0, bias=False),
+            nn.LeakyReLU(inplace=True),
+            nn.Sigmoid())
+
+
+    def encode(self, x):
+        #h1 = F.relu(self.encoder(x))
+        return self.encoder(x), self.encoder(x)
+
+    def reparameterize(self, mu, logvar):
+        if self.training:
+            std = torch.exp(0.5*logvar)
+            eps = torch.randn_like(std)
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
+
+    def decode(self, z):
+        h3 = self.decoder(z)
+        return h3
+
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z), mu, logvar
+
+
+
 device = "cpu"
-model = VAE().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+model = DCVAE().to(device)
+# model = VAE().to(device)
+# optimizer = optim.Adam(model.parameters(), lr=1e-3)
+optimizer = optim.SGD(model.parameters(), lr=1e-5)
 
 
 # Reconstruction + KL divergence losses summed over all elements and batch
 def loss_function(recon_x, x, mu, logvar):
-    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 9), size_average=False)
+    BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
 
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -105,7 +160,8 @@ def train(epoch):
         optimizer.zero_grad()
         recon_batch, mu, logvar = model(data)
         BCE, KLD = loss_function(recon_batch, data, mu, logvar)
-        loss = BCE + KLD
+        loss = BCE
+        # loss = BCE + KLD
         # recon_batch = model(data)
         # loss = loss_function(recon_batch, data)
         loss.backward()

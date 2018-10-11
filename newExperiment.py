@@ -10,6 +10,7 @@ Q1 = np.array(np.random.rand(3, 6) > .5)
 Q2 = np.array([[True, False, False], [False, True, False], [False, False, True]])
 Q = np.concatenate((Q1, Q2), axis=1)
 R = np.dot(P, Q).astype(np.float32)
+R[R==0]=-1
 
 R_true = copy.copy(R)
 # Choose 20% data to be noise, that is 720 of 3600 entries
@@ -112,8 +113,7 @@ class DCVAE(nn.Module):
             nn.ReLU(inplace=True),
             # state size. (ndf*2) x 16 x 16
             nn.ConvTranspose1d(32, 1, kernel_size=3, stride=1, padding=0, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Sigmoid())
+            nn.Tanh())
 
     def encode(self, x):
         output = self.encoder(x)
@@ -146,8 +146,19 @@ optimizer = optim.SGD(model.parameters(), lr=1e-5)
 
 
 # Reconstruction + KL divergence losses summed over all elements and batch
+# def loss_function(recon_x, x, mu, logvar):
+#     BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
+#
+#     # see Appendix B from VAE paper:
+#     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+#     # https://arxiv.org/abs/1312.6114
+#     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+#     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+#
+#     return BCE, KLD
+
 def loss_function(recon_x, x, mu, logvar):
-    BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
+    MSE = F.mse_loss(recon_x, x, size_average=False)
 
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -155,8 +166,7 @@ def loss_function(recon_x, x, mu, logvar):
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-    return BCE, KLD
-
+    return MSE, KLD
 
 batch_size = 8
 
@@ -172,8 +182,8 @@ def train(epoch):
         optimizer.zero_grad()
         recon_batch, mu, logvar = model(data)
         BCE, KLD = loss_function(recon_batch, data, mu, logvar)
-        loss = BCE
-        # loss = BCE + KLD
+        # loss = BCE
+        loss = BCE + KLD
         # recon_batch = model(data)
         # loss = loss_function(recon_batch, data)
         loss.backward()
@@ -191,7 +201,7 @@ def train(epoch):
           epoch, train_loss / len(R)))
 
 
-for epoch in range(1, 101):
+for epoch in range(1, 501):
     train(epoch)
 
 recon, mu, logvar = model(torch.tensor(R).view(400, 1, 9))
